@@ -1,0 +1,318 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum SessionStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  LOGGED_OUT
+}
+
+enum AuditActionType {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  REVOKE_SESSION
+}
+
+enum ForumThreadStatus {
+  OPEN
+  CLOSED
+  ARCHIVED
+}
+
+enum ForumPostType {
+  TEXT
+  IMAGE
+}
+
+enum ForumFlair {
+  GENERAL
+  BUG_REPORT
+  GUIDE
+  SUGGESTION
+  FAN_ART
+  LOOKING_FOR_PARTY
+  PATCH_NOTE
+}
+
+// ─── Core ────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  gameProfile   GameProfile?
+  sessions      UserSession[]
+  auditLogs     AuditLog[]
+  forumThreads  ForumThread[]
+  forumComments ForumComment[]
+  threadVotes   ForumThreadVote[]
+  commentVotes  ForumCommentVote[]
+  wikiRevisions WikiRevision[]
+  downloadLogs  DownloadLog[]
+  onlineStatus  UserOnlineStatus?
+
+  @@index([role])
+}
+
+model GameProfile {
+  id               String @id @default(cuid())
+  userId           String @unique
+  level            Int    @default(1)
+  experiencePoints Int    @default(0)
+  virtualCurrency  Int    @default(0)
+
+  user         User              @relation(fields: [userId], references: [id])
+  achievements UserAchievement[]
+}
+
+model Achievement {
+  id            String @id @default(cuid())
+  name          String @unique
+  criteriaCode  String
+  badgeImageUrl String
+  rewardPoints  Int
+
+  userAchievements UserAchievement[]
+}
+
+// Links GameProfile ↔ Achievement (not User directly)
+model UserAchievement {
+  gameProfileId String
+  achievementId String
+  achievedAt    DateTime @default(now())
+
+  gameProfile GameProfile @relation(fields: [gameProfileId], references: [id])
+  achievement Achievement @relation(fields: [achievementId], references: [id])
+
+  @@id([gameProfileId, achievementId])
+}
+
+// ─── Forum ───────────────────────────────────────────────
+
+model ForumCategory {
+  id           String  @id @default(cuid())
+  name         String  @unique
+  slug         String  @unique
+  description  String?
+  iconUrl      String?
+  isOfficial   Boolean @default(false)
+  displayOrder Int     @default(0)
+
+  threads ForumThread[]
+}
+
+model ForumThread {
+  id             String            @id @default(cuid())
+  title          String
+  slug           String            @unique
+  categoryId     String
+  authorId       String
+  content        String
+  imageUrl       String?
+  postType       ForumPostType     @default(TEXT)
+  flair          ForumFlair?
+  viewCount      Int               @default(0)
+  score          Int               @default(0)
+  commentCount   Int               @default(0)
+  isPinned       Boolean           @default(false)
+  isLocked       Boolean           @default(false)
+  isAnnouncement Boolean           @default(false)
+  status         ForumThreadStatus @default(OPEN)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  category ForumCategory     @relation(fields: [categoryId], references: [id])
+  author   User              @relation(fields: [authorId], references: [id])
+  comments ForumComment[]
+  votes    ForumThreadVote[]
+
+  @@index([categoryId, createdAt])
+  @@index([categoryId, score])
+  @@index([authorId, createdAt])
+}
+
+model ForumComment {
+  id        String   @id @default(cuid())
+  threadId  String
+  authorId  String
+  content   String
+  parentId  String?
+  score     Int      @default(0)
+  isDeleted Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  thread  ForumThread        @relation(fields: [threadId], references: [id])
+  author  User               @relation(fields: [authorId], references: [id])
+  parent  ForumComment?      @relation("CommentReplies", fields: [parentId], references: [id])
+  replies ForumComment[]     @relation("CommentReplies")
+  votes   ForumCommentVote[]
+
+  @@index([threadId, createdAt])
+  @@index([parentId])
+}
+
+model ForumThreadVote {
+  userId   String
+  threadId String
+  // +1 or -1 only — validated at service layer
+  value    Int
+
+  user   User        @relation(fields: [userId], references: [id])
+  thread ForumThread @relation(fields: [threadId], references: [id])
+
+  @@id([userId, threadId])
+}
+
+model ForumCommentVote {
+  userId    String
+  commentId String
+  // +1 or -1 only — validated at service layer
+  value     Int
+
+  user    User         @relation(fields: [userId], references: [id])
+  comment ForumComment @relation(fields: [commentId], references: [id])
+
+  @@id([userId, commentId])
+}
+
+// ─── Wiki ────────────────────────────────────────────────
+
+model WikiPage {
+  id               String  @id @default(cuid())
+  slug             String  @unique
+  title            String
+  metadataJson     Json?
+  // Intentionally denormalized — no @relation to avoid circular dep.
+  // Updated atomically with WikiRevision.create() in application code.
+  latestRevisionId String?
+
+  revisions WikiRevision[]
+
+  @@index([title])
+}
+
+model WikiRevision {
+  id        String   @id @default(cuid())
+  pageId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  page   WikiPage @relation(fields: [pageId], references: [id])
+  author User     @relation(fields: [authorId], references: [id])
+}
+
+// ─── Sessions & Audit ────────────────────────────────────
+
+model UserSession {
+  id         String        @id @default(cuid())
+  userId     String
+  sessionId  String        @unique
+  loginTime  DateTime      @default(now())
+  logoutTime DateTime?
+  deviceInfo String?
+  ipAddress  String
+  status     SessionStatus @default(ACTIVE)
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([loginTime])
+}
+
+model AuditLog {
+  id         String          @id @default(cuid())
+  userId     String?
+  actionType AuditActionType
+  entityName String
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  timestamp  DateTime        @default(now())
+  ipAddress  String?
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityName])
+  @@index([entityId])
+  @@index([timestamp])
+}
+
+// ─── Downloads ───────────────────────────────────────────
+
+model FileAsset {
+  id          String   @id @default(cuid())
+  fileName    String
+  fileVersion String   @unique
+  filePath    String
+  fileSize    BigInt
+  mimeType    String
+  uploadedAt  DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  downloadStats DownloadStats[]
+}
+
+model DownloadLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  // Denormalized snapshot — no FK to FileAsset (preserves version at download time)
+  fileVersion  String
+  bytesSent    BigInt
+  clientIp     String
+  downloadedAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([fileVersion])
+  @@index([downloadedAt])
+}
+
+model DownloadStats {
+  id             String   @id @default(cuid())
+  fileAssetId    String
+  date           DateTime @db.Date
+  downloadCount  BigInt   @default(0)
+  totalBytesSent BigInt   @default(0)
+
+  fileAsset FileAsset @relation(fields: [fileAssetId], references: [id])
+
+  @@unique([fileAssetId, date])
+  @@index([fileAssetId])
+}
+
+// ─── Presence ────────────────────────────────────────────
+
+model UserOnlineStatus {
+  userId          String    @id @unique
+  isOnline        Boolean   @default(false)
+  lastOnline      DateTime?
+  onlinePlatforms Json?
+  updatedAt       DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([lastOnline])
+}
