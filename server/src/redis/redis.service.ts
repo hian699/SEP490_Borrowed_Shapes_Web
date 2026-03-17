@@ -59,6 +59,18 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return this.client.zrange(key, 0, -1, 'WITHSCORES');
   }
 
+  /**
+   * Execute multiple Redis commands atomically as a pipeline.
+   * Each command is { cmd: string; args: any[] }.
+   */
+  async pipeline(commands: Array<{ cmd: string; args: any[] }>): Promise<void> {
+    const pipe = this.client.pipeline();
+    for (const { cmd, args } of commands) {
+      (pipe as any)[cmd](...args);
+    }
+    await pipe.exec();
+  }
+
   async scan(pattern: string): Promise<string[]> {
     const keys: string[] = [];
     let cursor = '0';

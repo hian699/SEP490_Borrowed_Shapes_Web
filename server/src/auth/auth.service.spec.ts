@@ -17,6 +17,7 @@ const mockPrisma = {
 const mockRedis = {
   hset: jest.fn(),
   expire: jest.fn(),
+  pipeline: jest.fn().mockResolvedValue(undefined),
   zadd: jest.fn(),
   del: jest.fn(),
   zrem: jest.fn(),
@@ -97,15 +98,22 @@ describe('AuthService', () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'u1', email: 'a@b.com', passwordHash: hash, role: 'USER' });
       mockPrisma.userSession.create.mockResolvedValue({});
       mockPrisma.auditLog.create.mockResolvedValue({});
-      mockRedis.hset.mockResolvedValue(undefined);
-      mockRedis.expire.mockResolvedValue(undefined);
+      mockRedis.pipeline.mockResolvedValue(undefined);
       mockRedis.zadd.mockResolvedValue(undefined);
 
       const result = await service.login({ email: 'a@b.com', password: 'password123', platform: 'forum' }, '127.0.0.1');
 
-      expect(mockRedis.hset).toHaveBeenCalledTimes(2); // auth key + presence key
-      expect(mockRedis.expire).toHaveBeenCalledTimes(2);
+      expect(mockRedis.pipeline).toHaveBeenCalledTimes(2); // auth key + presence key
       expect(mockRedis.zadd).toHaveBeenCalledTimes(1);
+      const pipelineCalls = (mockRedis.pipeline as jest.Mock).mock.calls;
+      // First pipeline call: auth key with SESSION_TTL_SEC=604800
+      expect(pipelineCalls[0][0]).toContainEqual(
+        expect.objectContaining({ cmd: 'expire', args: expect.arrayContaining([604800]) }),
+      );
+      // Second pipeline call: presence key with HEARTBEAT_TIMEOUT_SEC=120
+      expect(pipelineCalls[1][0]).toContainEqual(
+        expect.objectContaining({ cmd: 'expire', args: expect.arrayContaining([120]) }),
+      );
       expect(mockPrisma.userSession.create).toHaveBeenCalledTimes(1);
       expect(result).toMatchObject({ userId: 'u1', role: 'USER', sessionId: expect.any(String) });
     });

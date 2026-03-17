@@ -64,29 +64,17 @@ export class AuthService {
 
     // Auth session key — indexed by userId (for listing/revoke)
     const authKey = `session:${user.id}:${sessionId}`;
-    await this.redis.hset(authKey, {
-      userId: user.id,
-      sessionId,
-      role: user.role,
-      deviceInfo: dto.deviceInfo ?? '',
-      ipAddress,
-      loginTime: now,
-      expiresAt,
-    });
-    await this.redis.expire(authKey, sessionTtl);
+    await this.redis.pipeline([
+      { cmd: 'hset', args: [authKey, { userId: user.id, sessionId, role: user.role, deviceInfo: dto.deviceInfo ?? '', ipAddress, loginTime: now, expiresAt }] },
+      { cmd: 'expire', args: [authKey, sessionTtl] },
+    ]);
 
     // Presence key — indexed by sessionId (for O(1) auth guard lookup)
     const presenceKey = `user_session_details:${sessionId}`;
-    await this.redis.hset(presenceKey, {
-      userId: user.id,
-      role: user.role,
-      platform: dto.platform,
-      deviceInfo: dto.deviceInfo ?? '',
-      ipAddress,
-      lastActive: now,
-      expiresAt,
-    });
-    await this.redis.expire(presenceKey, heartbeatTtl);
+    await this.redis.pipeline([
+      { cmd: 'hset', args: [presenceKey, { userId: user.id, role: user.role, platform: dto.platform, deviceInfo: dto.deviceInfo ?? '', ipAddress, lastActive: now, expiresAt }] },
+      { cmd: 'expire', args: [presenceKey, heartbeatTtl] },
+    ]);
 
     await this.redis.zadd('online_users_by_last_active', Date.now(), sessionId);
 

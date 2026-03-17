@@ -80,6 +80,10 @@ describe('AuthGuard', () => {
     mockRedis.del.mockResolvedValue(undefined);
     mockPrisma.userSession.updateMany.mockResolvedValue({ count: 1 });
     await expect(guard.canActivate(makeContext('Bearer sess_123'))).rejects.toThrow(UnauthorizedException);
+    expect(mockRedis.del).toHaveBeenCalledWith(
+      'user_session_details:sess_123',
+      'session:user_1:sess_123',
+    );
     expect(mockPrisma.userSession.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ status: 'EXPIRED' }) }),
     );
