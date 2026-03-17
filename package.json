@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"next dev --turbopack\" \"cd server && npm run start:dev\"",
     "build": "next build",
-    "start": "next start",
+    "start": "concurrently \"next start\" \"cd server && npm run start:prod\"",
     "lint": "eslint"
   },
   "dependencies": {
@@ -14,12 +14,15 @@
     "react-dom": "19.2.3"
   },
   "devDependencies": {
+    "@prisma/client": "^7.5.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "prisma": "^7.5.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
