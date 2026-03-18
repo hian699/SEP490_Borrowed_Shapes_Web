@@ -38,7 +38,7 @@ export class AuthRateLimitGuard implements CanActivate {
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: `Too many requests. Limit: ${LIMIT} per ${WINDOW_SEC / 60} minutes.`,
+          message: `Too many requests.`,
           retryAfter: WINDOW_SEC,
         },
         HttpStatus.TOO_MANY_REQUESTS,
