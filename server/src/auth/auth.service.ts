@@ -25,7 +25,7 @@ export class AuthService {
     const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (existing) throw new ConflictException('Email already in use');
 
-    const rounds = this.config.get<number>('BCRYPT_ROUNDS', 12);
+    const rounds = parseInt(this.config.get('BCRYPT_ROUNDS', '12'), 10);
     const passwordHash = await bcrypt.hash(dto.password, rounds);
 
     const user = await this.prisma.$transaction(async (tx: any) => {
