@@ -1,0 +1,87 @@
+# Docker Compose cho Dokploy
+# Sử dụng image đã build và push lên Docker Hub.
+# Thay YOUR_DOCKERHUB_USERNAME bằng username Docker Hub thực tế.
+#
+# Build & push images:
+#   docker build -t YOUR_DOCKERHUB_USERNAME/bsw-frontend:latest .
+#   docker build -t YOUR_DOCKERHUB_USERNAME/bsw-backend:latest ./server
+#   docker push YOUR_DOCKERHUB_USERNAME/bsw-frontend:latest
+#   docker push YOUR_DOCKERHUB_USERNAME/bsw-backend:latest
+
+services:
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-borrowed_shapes}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-borrowed_shapes}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Backend (NestJS) ────────────────────────────────────────────────────────
+  backend:
+    image: YOUR_DOCKERHUB_USERNAME/bsw-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
+      SESSION_TTL_SEC: ${SESSION_TTL_SEC:-604800}
+      HEARTBEAT_TIMEOUT_SEC: ${HEARTBEAT_TIMEOUT_SEC:-120}
+      HEARTBEAT_TIMEOUT_MS: ${HEARTBEAT_TIMEOUT_MS:-120000}
+      REDIS_CLEANUP_INTERVAL_MS: ${REDIS_CLEANUP_INTERVAL_MS:-60000}
+      DB_SYNC_INTERVAL_MS: ${DB_SYNC_INTERVAL_MS:-60000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Chạy migration trước khi khởi động server
+    command: sh -c "pnpm exec prisma migrate deploy && node dist/main"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/api || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+
+  # ─── Frontend (Next.js) ──────────────────────────────────────────────────────
+  frontend:
+    image: YOUR_DOCKERHUB_USERNAME/bsw-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      NESTJS_URL: ${NESTJS_URL:-http://backend:3001}
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
