@@ -1,3 +1,4 @@
+import 'dotenv/config'; // Load .env before any module initializes
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
