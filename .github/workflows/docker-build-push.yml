@@ -78,3 +78,29 @@ jobs:
           labels: ${{ steps.meta-backend.outputs.labels }}
           cache-from: type=gha,scope=backend
           cache-to: type=gha,scope=backend,mode=max
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # CD: Trigger Dokploy redeploy qua webhook
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Dokploy
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Trigger Dokploy redeploy
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/dokploy_response.txt -w "%{http_code}" \
+            -X POST "${{ secrets.DOKPLOY_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json")
+
+          echo "HTTP Status: $HTTP_STATUS"
+          echo "Response: $(cat /tmp/dokploy_response.txt)"
+
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "❌ Dokploy webhook failed with status $HTTP_STATUS"
+            exit 1
+          fi
+
+          echo "✅ Dokploy redeploy triggered successfully"
