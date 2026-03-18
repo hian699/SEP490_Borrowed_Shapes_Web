@@ -43,6 +43,13 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return (await this.client.exists(key)) === 1;
   }
 
+  /** Increment counter, set TTL on first increment. Returns new count. */
+  async incr(key: string, ttlSeconds: number): Promise<number> {
+    const count = await this.client.incr(key);
+    if (count === 1) await this.client.expire(key, ttlSeconds);
+    return count;
+  }
+
   async zadd(key: string, score: number, member: string): Promise<void> {
     await this.client.zadd(key, score, member);
   }
