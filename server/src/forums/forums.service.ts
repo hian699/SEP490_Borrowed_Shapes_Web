@@ -13,13 +13,23 @@ import { CreateForumDto } from './dto/create-forums.dto';
 import { UpdateForumDto } from './dto/update-forums.dto';
 import { Web$46ForumPostType } from '../entities/Web$46ForumPostType';
 import { Web$46ForumThreadStatus } from '../entities/Web$46ForumThreadStatus';
+import { GameProfile } from '../entities/GameProfile';
 
 @Injectable()
 export class ForumService {
-  constructor(private readonly em: EntityManager) {}
+  constructor(private readonly em: EntityManager) { }
 
   // List: pagination + search + category + sort
-  async list({ page = 1, limit = 20, q = '', categoryId, sort = 'recent' }: any) {
+  async list({
+    page = 1,
+    limit = 20,
+    q = '',
+    categoryId,
+    sortBy = 'createdAt',
+    order = 'desc',
+    month,
+    year,
+  }: any) {
     const offset = (page - 1) * limit;
     const clauses: string[] = [];
     const params: any[] = [];
@@ -36,22 +46,44 @@ export class ForumService {
       params.push(categoryId);
     }
 
+    // Filter by month/year
+    if (year && month) {
+      const startDate = new Date(year, month - 1, 1);
+      const endDate = new Date(year, month, 1);
+      clauses.push(`t."createdAt" >= ? and t."createdAt" < ?`);
+      params.push(startDate, endDate);
+    } else if (year) {
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year + 1, 0, 1);
+      clauses.push(`t."createdAt" >= ? and t."createdAt" < ?`);
+      params.push(startDate, endDate);
+    }
+
     const where = clauses.length ? `where ${clauses.join(' and ')}` : '';
 
-    const order =
-      sort === 'top'
-        ? `order by "score" desc, "createdAt" desc`
-        : `order by "createdAt" desc`;
+    // Build order clause: isPinned DESC first, then sortBy with order
+    const validSortFields = ['score', 'createdAt', 'updatedAt'];
+    const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    const sortOrder = order === 'asc' ? 'asc' : 'desc';
 
+    const orderClause = `order by t."isPinned" desc, t."${sortField}" ${sortOrder}`;
+
+    // Select specific columns to avoid leaking sensitive data
     const rows = await this.em.execute(
       `
-      select t.*, u."displayName" as "authorName", u."imgUrl" as "authorAvatar",
-             c."name" as "categoryName", c."slug" as "categorySlug"
+      select t."id", t."title", t."slug", t."content", t."imageUrl", t."score", 
+             t."viewCount", t."isPinned", t."isLocked", t."postType", t."status",
+             t."createdAt", t."updatedAt",
+             u."id" as "authorId", u."displayName" as "authorName", u."imgUrl" as "authorAvatar",
+             a."badgeImageUrl" as "authorBadgeImageUrl",
+             c."id" as "categoryId", c."name" as "categoryName", c."slug" as "categorySlug"
       from web."ForumThread" t
       inner join auth."User" u on u."id" = t."authorId"
+      left join game."GameProfile" gp on gp."userId" = u."id"
+      left join game."Achievement" a on a."id" = gp."equippedAchievementId"
       inner join web."ForumCategory" c on c."id" = t."categoryId"
       ${where}
-      ${order}
+      ${orderClause}
       limit ? offset ?
       `,
       [...params, limit, offset],
@@ -70,7 +102,7 @@ export class ForumService {
     };
   }
 
-  // Detail + increment viewCount
+  // Detail + increment viewCount + sanitize author data
   async findOne(id: string) {
     const thread = await this.em.findOne(ForumThread, { id }, { populate: ['authorId', 'categoryId'] });
     if (!thread) throw new NotFoundException('forum.thread_not_found');
@@ -78,15 +110,55 @@ export class ForumService {
     // defensively increment viewCount on the entity and flush
     thread.viewCount = (Number(thread.viewCount) || 0) + 1;
     await this.em.flush();
-    // thread is already populated with authorId and categoryId
-    return thread;
+
+    const gp = await this.em.findOne(
+      GameProfile,
+      { userId: thread.authorId },
+      { populate: ['equippedAchievement'] },
+    );
+
+    const badgeImageUrl =
+      gp && (gp as any).equippedAchievement ? (gp as any).equippedAchievement.badgeImageUrl : null;
+
+    // Sanitize user data: exclude email, password, and other sensitive fields
+    const sanitizedAuthor = {
+      id: thread.authorId.id,
+      displayName: thread.authorId.displayName,
+      imgUrl: thread.authorId.imgUrl,
+      badgeImageUrl,
+    };
+
+    const sanitizedCategory = {
+      id: thread.categoryId.id,
+      name: thread.categoryId.name,
+      slug: thread.categoryId.slug,
+    };
+
+    // Return sanitized thread
+    return {
+      id: thread.id,
+      title: thread.title,
+      slug: thread.slug,
+      content: thread.content,
+      imageUrl: thread.imageUrl,
+      score: thread.score,
+      viewCount: thread.viewCount,
+      isPinned: thread.isPinned,
+      isLocked: thread.isLocked,
+      postType: thread.postType,
+      status: thread.status,
+      createdAt: thread.createdAt,
+      updatedAt: thread.updatedAt,
+      author: sanitizedAuthor,
+      category: sanitizedCategory,
+    };
   }
 
   // Create — auth required
   async create(dto: CreateForumDto, authorId: string, isAdmin = false) {
     // Validate input
     if ((dto.isPinned !== undefined || dto.isLocked !== undefined) && !isAdmin) {
-    throw new ForbiddenException('forum.forbidden_admin_only');
+      throw new ForbiddenException('forum.forbidden_admin_only');
     }
     if (!dto.title || !dto.title.trim()) {
       throw new BadRequestException('forum.title_required');
@@ -109,9 +181,13 @@ export class ForumService {
     // Prepare thread data
     const now = new Date();
 
-    const slug = this.slugify(
-    dto.slug?.trim() || dto.title
-    );
+    const slug = this.slugify(dto.slug?.trim() || dto.title);
+
+    // Check slug conflict
+    const existingSlug = await this.em.findOne(ForumThread, { slug });
+    if (existingSlug) {
+      throw new BadRequestException('forum.slug_conflict');
+    }
 
     // Create thread
     const thread = this.em.create(ForumThread, {
@@ -130,7 +206,7 @@ export class ForumService {
     });
 
     await this.em.persistAndFlush(thread);
-    return thread;
+    return null;
   }
 
   // Update — author only
@@ -151,10 +227,20 @@ export class ForumService {
     }
 
     if (dto.slug) {
-      thread.slug = this.slugify(
-      dto.slug.trim() || thread.title
-      );
-      if (!thread.slug) throw new BadRequestException('forum.slug_required');
+      const newSlug = this.slugify(dto.slug.trim() || thread.title);
+      if (!newSlug) throw new BadRequestException('forum.slug_required');
+
+      // Check slug conflict (if different from current)
+      if (newSlug !== thread.slug) {
+        const existingSlug = await this.em.execute(
+          `select id from web."ForumThread" where slug = ? and id <> ?`,
+          [newSlug, id],
+        );
+        if (existingSlug?.length) {
+          throw new BadRequestException('forum.slug_conflict');
+        }
+      }
+      thread.slug = newSlug;
     }
 
     if (dto.content) {
@@ -175,17 +261,17 @@ export class ForumService {
     }
 
     if (dto.postType) {
-    thread.postType = dto.postType;
+      thread.postType = dto.postType;
     }
 
     if (dto.status) {
-    thread.status = dto.status;
+      thread.status = dto.status;
     }
 
     if (dto.isPinned !== undefined || dto.isLocked !== undefined) {
       if (!isAdmin) {
         throw new ForbiddenException('forum.forbidden_admin_only');
-        }
+      }
       if (dto.isPinned !== undefined) thread.isPinned = dto.isPinned;
       if (dto.isLocked !== undefined) thread.isLocked = dto.isLocked;
     }
@@ -193,7 +279,7 @@ export class ForumService {
     thread.updatedAt = new Date();
 
     await this.em.flush();
-    return thread;
+    return null;
   }
 
   // Remove — author or ADMIN
@@ -207,7 +293,7 @@ export class ForumService {
     }
 
     await this.em.removeAndFlush(thread);
-    return { success: true };
+    return null;
   }
 
   // Vote — value = 1 | -1, toggle behaviour
@@ -268,9 +354,9 @@ export class ForumService {
     const normalized = s.normalize('NFD');
     // Remove accents using regex, also convert đ to d, Đ to D
     const withoutAccents = normalized
-    .replace(/đ/g, 'd')
-    .replace(/Đ/g, 'd')
-    .replace(/[\u0300-\u036f]/g, '');
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'd')
+      .replace(/[\u0300-\u036f]/g, '');
     const lowercase = withoutAccents.toLowerCase();
     // Replace whitespace with dashes
     const withDashes = lowercase.replace(/\s+/g, '-');
