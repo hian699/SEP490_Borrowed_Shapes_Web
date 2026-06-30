@@ -66,3 +66,15 @@
 .wiki-ck-editor .ck.ck-button {
   color: hsl(var(--foreground));
 }
+
+/* Dropdown panel luon mo XUONG duoi (south). CKEditor tu dong lat len tren
+   (north: bottom:100%) khi doan thieu cho ben duoi — che mat toolbar/tabs.
+   Ep cac bien the _n* render nhu _s* de luon do xuong, ca 2 che do grouping. */
+.wiki-ck-editor .ck.ck-dropdown .ck-dropdown__panel_n,
+.wiki-ck-editor .ck.ck-dropdown .ck-dropdown__panel_ne,
+.wiki-ck-editor .ck.ck-dropdown .ck-dropdown__panel_nw,
+.wiki-ck-editor .ck.ck-dropdown .ck-dropdown__panel_nmw,
+.wiki-ck-editor .ck.ck-dropdown .ck-dropdown__panel_nme {
+  top: 100%;
+  bottom: auto;
+}

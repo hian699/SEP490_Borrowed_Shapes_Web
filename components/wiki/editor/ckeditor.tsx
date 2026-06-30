@@ -22,6 +22,8 @@ import {
   Image,
   ImageUpload,
   ImageInsert,
+  ImageResize,
+  ImageToolbar,
   Autoformat,
   Markdown,
   type EditorConfig,
@@ -74,6 +76,8 @@ function buildConfig(
       Image,
       ImageUpload,
       ImageInsert,
+      ImageResize,
+      ImageToolbar,
       Autoformat,
       Markdown,
     ],
@@ -117,6 +121,22 @@ function buildConfig(
     },
     table: {
       contentToolbar: ["tableColumn", "tableRow", "mergeTableCells"],
+    },
+    image: {
+      // Click anh -> hien toolbar resize. % de responsive theo container.
+      toolbar: [
+        "resizeImage:25",
+        "resizeImage:50",
+        "resizeImage:75",
+        "resizeImage:original",
+      ],
+      resizeOptions: [
+        { name: "resizeImage:original", value: null, label: "Original" },
+        { name: "resizeImage:25", value: "25", label: "25%" },
+        { name: "resizeImage:50", value: "50", label: "50%" },
+        { name: "resizeImage:75", value: "75", label: "75%" },
+      ],
+      resizeUnit: "%",
     },
   };
 }
@@ -232,6 +252,13 @@ export function WikiEditor({
           disabled={readonly}
           onReady={(editor) => {
             editorRef.current = editor;
+            // Markdown khong bieu dien duoc size anh — giu <figure>/<img> duoi dang
+            // raw HTML khi serialize de width tu resize song qua luu/reload.
+            const proc = editor.data.processor as {
+              keepHtml?: (el: string) => void;
+            };
+            proc.keepHtml?.("figure");
+            proc.keepHtml?.("img");
           }}
           onChange={handleChange}
         />

@@ -3,11 +3,14 @@
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeSlug from 'rehype-slug';
+import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import type { Schema } from 'hast-util-sanitize';
 
 const sanitizeSchema: Schema = {
   ...defaultSchema,
+  // figure/figcaption: CKEditor wraps resized images + table captions in these.
+  tagNames: [...(defaultSchema.tagNames ?? []), 'figure', 'figcaption'],
   attributes: {
     ...defaultSchema.attributes,
     h1: [...(defaultSchema.attributes?.h1 ?? []), 'id'],
@@ -21,9 +24,15 @@ const sanitizeSchema: Schema = {
       ['target', 'self', '_blank'],
       ['rel', 'noopener', 'noreferrer'],
     ],
+    // className + style carry CKEditor's image width (style="width:NN%").
+    figure: ['className', 'style'],
     img: [
       ...(defaultSchema.attributes?.img ?? []),
       ['loading', 'lazy'],
+      'className',
+      'style',
+      'width',
+      'height',
       ['src', /^https?:\/\//i, /^\/uploads\//, /^\/api\/wiki\/image\/wiki\/[A-Za-z0-9_-]+\/[A-Za-z0-9-]+\.(?:jpg|png|webp|gif)$/],
     ],
   },
@@ -70,7 +79,7 @@ export function WikiContentRenderer({ markdown }: Props) {
     <article className="prose prose-slate dark:prose-invert max-w-none prose-headings:scroll-mt-24 prose-img:rounded-lg">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeSlug, [rehypeSanitize, sanitizeSchema]]}
+        rehypePlugins={[rehypeSlug, rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
         components={components}
       >
         {markdown}

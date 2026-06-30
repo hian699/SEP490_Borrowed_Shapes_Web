@@ -156,65 +156,108 @@ html {
    CKEDITOR OVERRIDES
 ========================= */
 @layer components {
+  /* Token-based: tu dong doi theo light/dark, khong can selector .dark rieng.
+     !important + @layer components de thang style mac dinh (unlayered) cua CKEditor. */
+
+  /* --- Editable surface + toolbar (UI) --- */
   .ck-editor__editable,
   .ck.ck-editor__editable_inline {
     min-height: 100px;
-    background: #ffffff !important;
-    color: #111827 !important;
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
     border-color: hsl(var(--border)) !important;
   }
 
   .ck-editor__editable p,
   .ck-editor__editable span,
   .ck-editor__editable li {
-    color: #111827 !important;
+    color: hsl(var(--foreground)) !important;
   }
 
   .ck.ck-editor__editable_inline.ck-placeholder::before {
-    color: #666 !important;
-  }
-
-  html.dark .ck.ck-editor__main > .ck-editor__editable,
-  [data-theme="dark"] .ck.ck-editor__main > .ck-editor__editable {
-    background: #0f0f1a !important;
-    color: #f9fafb !important;
-    border-color: #1e1e3a !important;
-  }
-
-  html.dark .ck-editor__editable p,
-  html.dark .ck-editor__editable span,
-  html.dark .ck-editor__editable li,
-  [data-theme="dark"] .ck-editor__editable p,
-  [data-theme="dark"] .ck-editor__editable span,
-  [data-theme="dark"] .ck-editor__editable li {
-    color: #f9fafb !important;
-  }
-
-  html.dark .ck.ck-editor__editable_inline.ck-placeholder::before,
-  [data-theme="dark"] .ck.ck-editor__editable_inline.ck-placeholder::before {
     color: hsl(var(--muted-foreground)) !important;
   }
 
-  html.dark .ck.ck-toolbar,
-  [data-theme="dark"] .ck.ck-toolbar {
-    background: #111827 !important;
-    border-color: #1e1e3a !important;
+  .ck.ck-toolbar {
+    background: hsl(var(--muted)) !important;
+    border-color: hsl(var(--border)) !important;
   }
 
-  html.dark .ck.ck-button,
-  [data-theme="dark"] .ck.ck-button {
-    color: #e5e7eb !important;
+  .ck.ck-button,
+  .ck.ck-icon {
+    color: hsl(var(--foreground)) !important;
   }
 
-  html.dark .ck.ck-button:hover,
-  [data-theme="dark"] .ck.ck-button:hover {
-    background: #1f2937 !important;
+  .ck.ck-button:hover {
+    background: hsl(var(--accent)) !important;
   }
 
-  html.dark .ck.ck-dropdown__panel,
-  [data-theme="dark"] .ck.ck-dropdown__panel {
-    background: #111827 !important;
-    border-color: #1e1e3a !important;
+  .ck.ck-dropdown__panel,
+  .ck.ck-list {
+    background: hsl(var(--popover)) !important;
+    border-color: hsl(var(--border)) !important;
+  }
+
+  /* --- Content (.ck-content) elements: CKEditor hardcode mau sang, khong theo theme --- */
+
+  /* Headings + links */
+  .ck-content h1,
+  .ck-content h2,
+  .ck-content h3,
+  .ck-content h4 {
+    color: hsl(var(--foreground)) !important;
+  }
+  .ck-content a {
+    color: hsl(var(--primary)) !important;
+  }
+
+  /* Tables: vien #b3b3b3/#bfbfbf, header bg #0000000d.
+     CKEditor boc table trong <figure class="table"><table> — the <table>
+     KHONG co class .table, figure moi co. Nen target qua figure.table table. */
+  .ck-content .table table,
+  .ck-content .table table td,
+  .ck-content .table table th,
+  .ck-content table {
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+  .ck-content .table table td,
+  .ck-content table td {
+    background: hsl(var(--background)) !important;
+  }
+  .ck-content .table table th,
+  .ck-content table th {
+    background: hsl(var(--muted)) !important;
+  }
+
+  /* Caption (table + image): bg #f7f7f7 / text #333 */
+  .ck-content .table > figcaption,
+  .ck-content figure.table > table > caption,
+  .ck-content .image > figcaption,
+  .ck-content figure.image > figcaption {
+    background: hsl(var(--muted)) !important;
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Blockquote: vien #ccc / text #353535 */
+  .ck-content blockquote {
+    border-left-color: hsl(var(--border)) !important;
+    color: hsl(var(--muted-foreground)) !important;
+  }
+
+  /* Inline code + code block: bg #c7c7c74d / vien #c4c4c4 */
+  .ck-content code,
+  .ck-content pre,
+  .ck-content pre code {
+    background: hsl(var(--muted)) !important;
+    border-color: hsl(var(--border)) !important;
+    color: hsl(var(--foreground)) !important;
+  }
+
+  /* Horizontal line: bg #dedede */
+  .ck-content hr {
+    background: hsl(var(--border)) !important;
+    border-color: hsl(var(--border)) !important;
   }
 }
 
